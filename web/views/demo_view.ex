@@ -1,20 +1,20 @@
 defmodule Templater.DemoView do
   use Templater.Web, :view
   @strings_per_page 200
-  @number_of_pages 1000
-  @bunchapages 1..@number_of_pages |> Enum.map(fn _ ->
+  @number_of_pages 1_000
+  @generated_pages 1..@number_of_pages |> Enum.map(fn _ ->
     Templater.StringGenerator.rand_strings @strings_per_page
   end)
-  @static_page hd(@bunchapages)
+  @static_page hd(@generated_pages)
 
   def render("static.html", _) do
-    _random_page = @bunchapages |> Enum.random
-    {:safe, [Templater.StringGenerator.string_of_length(20), "\n", @static_page]}
+    _random_page = @generated_pages |> Enum.random
+    {:safe, [Templater.StringGenerator.rand_string, "\n", @static_page]}
   end
 
   def render("dynamic.html", _) do
-    random_page = @bunchapages |> Enum.random
-    {:safe, [Templater.StringGenerator.string_of_length(20), "\n", random_page]}
+    random_page = @generated_pages |> Enum.random
+    {:safe, [Templater.StringGenerator.rand_string, "\n", random_page]}
   end
 
   # NOTE: Trying
