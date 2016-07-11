@@ -15,10 +15,9 @@ defmodule Templater.StringGenerator do
   end
 
   def string_of_length(length) do
-    Enum.reduce((1..length), "", fn (_i, acc) ->
-      new_char = @chars |> Enum.random
-      acc <> new_char
-    end)
+    Enum.reduce((1..length), [], fn (_i, acc) ->
+      [Enum.random(@chars) | acc]
+    end) |> Enum.join("")
   end
 
 end
