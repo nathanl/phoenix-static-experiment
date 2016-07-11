@@ -1,18 +1,23 @@
-# Templater
+# General idea
 
-To start your Phoenix app:
+This Phoenix app is an experiment. There are two important routes: `/static/` and `/dynamic/`.
 
-  * Install dependencies with `mix deps.get`
-  * Start Phoenix endpoint with `mix phoenix.server`
+- `/static/` responds using an iolist where the first element is a random string, but the rest is an unchanging list of strings.
+- `/dynamic/` response using an iolist that changes with each request.
 
-Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
+Both do the same work *before* responding; they differ only in the *contents* of their respond.
 
-Ready to run in production? Please [check our deployment guides](http://www.phoenixframework.org/docs/deployment).
+## Hypothesis
 
-## Learn more
+`/static/` may be more performant. Because its response consists largely of the same strings, request after request, the operating system may soon say, "I'm getting a `writev` to this socket with... oh, I just saw that memory address when I sent the previous response. I can find that footer string in CPU cache and not bother with RAM."
 
-  * Official website: http://www.phoenixframework.org/
-  * Guides: http://phoenixframework.org/docs/overview
-  * Docs: http://hexdocs.pm/phoenix
-  * Mailing list: http://groups.google.com/group/phoenix-talk
-  * Source: https://github.com/phoenixframework/phoenix
+## Testing
+
+I used [wrk](https://github.com/wg/wrk) to load test these two endpoints. Eg:
+
+    wrk -c2000 -t80 -d30 --timeout 10s http://localhost:4000/static
+    wrk -c2000 -t80 -d30 --timeout 10s http://localhost:4000/dynamic
+
+## Results
+
+`/static/` was not faster, and actually looked a little slower (though that could be jitter). 🤔
