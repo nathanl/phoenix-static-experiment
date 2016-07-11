@@ -1,13 +1,13 @@
 defmodule Templater.DemoView do
   use Templater.Web, :view
-  @strings_per_page 200
+  @strings_per_page 5
   @number_of_pages 100
   @generated_pages 1..@number_of_pages |> Enum.map(fn _ ->
     Templater.StringGenerator.rand_strings @strings_per_page
   end)
   @static_page hd(@generated_pages)
 
-  # GOAL: to have these two function heads not differ in the amount of work
+  # GOAL: to have static & dynamic not differ in the amount of work
   # they perform at runtime, but only in the fact that one of them returns an
   # iolist with mostly-unchanging contents, and the other returns an iolist
   # with contents that generally do change on each request. (These are sampled
@@ -18,11 +18,29 @@ defmodule Templater.DemoView do
 
   def render("static.html", _) do
     _random_page = @generated_pages |> Enum.random
-    {:safe, [Templater.StringGenerator.rand_string, "\n", @static_page]}
+    {:safe, [@static_page, "\n", Templater.StringGenerator.rand_string]}
   end
 
   def render("dynamic.html", _) do
     random_page = @generated_pages |> Enum.random
-    {:safe, [Templater.StringGenerator.rand_string, "\n", random_page]}
+    {:safe, [random_page, "\n", Templater.StringGenerator.rand_string]}
+  end
+
+  # THIS ONE sends each of these strings separately to writev. WHY DOESN'T STATIC??
+  def render("hardcoded.html", _) do
+    {
+      :safe,
+      [
+        [
+          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+          "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+          "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+          "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
+        ],
+        "\n",
+        Templater.StringGenerator.rand_string,
+      ]
+    }
   end
 end

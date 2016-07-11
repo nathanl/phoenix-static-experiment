@@ -1,0 +1,3 @@
+<header>O O O O O O O O O O O O O O O O O O O O O O O O O O O O O O O O</header>
+<%= "time: #{:os.system_time(:milli_seconds)}" %>
+<footer>X X X X X X X X X X X X X X X X X X X X X X X X X X X X X X X X</footer>
