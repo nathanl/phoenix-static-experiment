@@ -2,7 +2,7 @@
 
 This repo is an attempt to understand the following statement from "Programming Phoenix."
 
-    "Templates are precompiled. Phoenix doesn’t need to copy strings for each rendered template. At the hardware level, you’ll see caching come into play for these strings where it never did before."
+> "Templates are precompiled. Phoenix doesn’t need to copy strings for each rendered template. At the hardware level, you’ll see caching come into play for these strings where it never did before."
 
 I wanted to know: where, exactly, does hardware caching come into play, and how does it help performance?
 
