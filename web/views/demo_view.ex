@@ -14,7 +14,7 @@ defmodule Templater.DemoView do
   # from a pre-generated list of possible responses because otherwise we have
   # to generate random stuff at runtime, and generating this much random stuff
   # means there's a bottleneck at the step where we ask crypto for some random
-  # bytes.)
+  # bytes. This may not be a problem with the current implementation.)
 
   def render("static.html", _) do
     _random_page = @generated_pages |> Enum.random
@@ -24,23 +24,5 @@ defmodule Templater.DemoView do
   def render("dynamic.html", _) do
     random_page = @generated_pages |> Enum.random
     {:safe, [random_page, "\n", Templater.StringGenerator.rand_string]}
-  end
-
-  # THIS ONE sends each of these strings separately to writev. WHY DOESN'T STATIC??
-  def render("hardcoded.html", _) do
-    {
-      :safe,
-      [
-        [
-          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
-          "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
-          "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
-          "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
-        ],
-        "\n",
-        Templater.StringGenerator.rand_string,
-      ]
-    }
   end
 end

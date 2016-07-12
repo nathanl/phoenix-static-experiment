@@ -18,10 +18,8 @@ defmodule Templater.Router do
 
     get "/", PageController, :index
 
-    get "/dynamic",       DemoController, :dynamic
-    get "/tiny_template", DemoController, :tiny_template
-    get "/hardcoded",     DemoController, :hardcoded
-    get "/static",        DemoController, :static
+    get "/dynamic", DemoController, :dynamic
+    get "/static",  DemoController, :static
   end
 
   # Other scopes may use custom stacks.
