@@ -4,13 +4,15 @@ This repo is an attempt to understand the following statement from "Programming 
 
     "Templates are precompiled. Phoenix doesn’t need to copy strings for each rendered template. At the hardware level, you’ll see caching come into play for these strings where it never did before."
 
-Here's my understanding so far: [Phoenix renders templates as iodata](https://github.com/phoenixframework/phoenix/blob/b7660e596efe6cd7ac711ef20172dc889f436ac2/lib/phoenix/view.ex#L334-L336), and that this means it never has to concatenate the parts of a page into a single response string. Instead, the Erlang VM can call `writev` with the iolist and let the operating system send each part of the response over the socket individually.
+I wanted to know: where, exactly, does hardware caching come into play, and how does it help performance?
 
-This means Elixir doesn't need to allocate a 2MB string in order for Phoenix to send a 2MB HTML response. That's good. But that doesn't explain the "hardware caching" part.
+Here's my understanding so far: [Phoenix renders templates as iodata](https://github.com/phoenixframework/phoenix/blob/b7660e596efe6cd7ac711ef20172dc889f436ac2/lib/phoenix/view.ex#L334-L336), and this means it never has to concatenate the parts of a page into a single response string. Instead, the Erlang VM can call `writev` with the flattened iolist and let the operating system concatenate the response to be sent over TCP.
+
+This means the BEAM doesn't need to allocate a 200MB string in order for Phoenix to send a 200MB HTML response. That's good. But that doesn't explain the "hardware caching" part.
 
 But I had a guess. Given that:
 
-- `writev` is given the memory addresses in RAM of the data it should write
+- `writev` is given the memory addresses in RAM of the items it should write
 - a template has both static parts (like headers) and dynamic parts (eg, from a database query),
 - strings are immutable in Elixir
 
@@ -20,48 +22,59 @@ But I had a guess. Given that:
 - On Nth request, Phoenix responds with an iolist with **some of the same strings in memory** - eg, the header and footer - and these are given to `writev` as the **same memory addresses** as in the previous requests
 - The operating system notices this, and says "I don't need to get that string from RAM; I already have it in CPU cache." This results in a faster response.
 
-That was my idea. I've been trying to prove or disprove it.
+That was my hypothesis. I've been trying to prove or disprove it.
 
-##
+## What I tried
 
-This Phoenix app is an experiment. There are three important routes: `/static/`, `/dynamic/`, and `/tiny_template/`.
+I wrote a Phoenix app with two endpoints: `/dynamic/` and `/static/`. Both `render` functions return an iolist of pre-generated random strings, and both do the same amount of work at runtime. The only difference is that `dynamic` responds with a random selection of the pre-generated strings and `static` responds with mostly the same ones.
 
-`/static/` responds using an iolist where the first element is a random string, but the rest is an unchanging list of strings.
+I ran this Phoenix app and used [Evan Miller's dtrace script](https://github.com/evanmiller/tracewrite) to watch it, like `sudo dtrace -s tracewrite.d -p 33924`.
 
-`/dynamic/` response using an iolist that changes with each request.
+## What I found
 
-Both do the same work *before* responding; they differ only in the *contents* of their response.
+Sure enough, after much futzing with the size of the strings (see notes in `StringGenerator` if you care), I saw that `/static/` uses the same memory addresses for some of the strings it sends to `writev`, request after request. For example, I saw this line in the dtrace output for several requests in a row:
+                                   
+    Writev data 10/11: (65 bytes): 0x00000000169b5db8 GZKHIIYQPVYQKYPTVCDGJIES
+                             memory address--^  for   ^-- this string, which appears in the HTML
 
-`/tiny_template/` renders a template with a tiny header and footer and one small dynamic string.
+(I also saw the same memory addresses for the strings rendered from a template, assuming they were the right size - for example, with this one:
 
-## Hypothesis
+    <header>O O O O O O O O O O O O O O O O O O O O O O O O O O O O O O O O</header>
+    <%= "time: #{:os.system_time(:milli_seconds)}" %>
+    <footer>X X X X X X X X X X X X X X X X X X X X X X X X X X X X X X X X</footer>
 
-`/static/` may be more performant than `/dynamic/`. Because its response consists largely of the same strings, request after request, the operating system may soon say, "I'm getting a `writev` to this socket with... oh, I just saw that memory address when I sent the previous response. I can find that footer string in CPU cache and not bother with RAM."
+)
 
-## Testing
+On the other hand, `/dyanmic` would cram the whole response into one of the vector elements sent to `writev`.
 
-I used [wrk](https://github.com/wg/wrk) to load test these two endpoints. Eg:
+However, surprisingly, the `/static/` endpoint has **lower throughput** than `/dynamic/`.
 
-    wrk -c2000 -t80 -d30 --timeout 10s http://localhost:4000/static
-    wrk -c2000 -t80 -d30 --timeout 10s http://localhost:4000/dynamic
+    $: wrk -c800 -t80 -d30 --timeout 10s http://localhost:4000/static
+    Running 30s test @ http://localhost:4000/static
+      80 threads and 800 connections
+      Thread Stats   Avg      Stdev     Max   +/- Stdev
+        Latency   338.55ms  124.75ms 769.10ms   67.02%
+        Req/Sec    29.28     19.27   101.00     57.02%
+      64042 requests in 30.10s, 43.28MB read
+      Socket errors: connect 0, read 727, write 0, timeout 0
+    Requests/sec:   2127.42
+    Transfer/sec:      1.44MB
 
-## Results
+    $: wrk -c800 -t80 -d30 --timeout 10s http://localhost:4000/dynamic
+    Running 30s test @ http://localhost:4000/dynamic
+      80 threads and 800 connections
+      Thread Stats   Avg      Stdev     Max   +/- Stdev
+        Latency   322.74ms  119.46ms 734.58ms   67.82%
+        Req/Sec    29.69     19.51   101.00     59.45%
+      61371 requests in 30.09s, 41.83MB read
+      Socket errors: connect 0, read 913, write 0, timeout 0
+    Requests/sec:   2039.34
+    Transfer/sec:      1.39MB
 
-`/static/` was not faster, and actually looked a little slower (though that could be jitter). 🤔
+This actually matches what Evan Miller describes in [Elixir RAM and the Template of Doom](http://www.evanmiller.org/elixir-ram-and-the-template-of-doom.html). He shows that if you mess with your output so that `writev` gets fewer, larger items, the response time is faster. He describes this as it being "delivered to the client" in differently-sized "chunks", but I'm not sure what that means: the response does not used chunked encoding, and the entire response comes back in a single TCP packet, according to Wireshark.
 
+In any case, it appears that `writev` itself is faster if given fewer, larger items in the vector. Apparently this effect is larger than the effect (if any) of CPU caching in getting these strings from memory.
 
-===============
+So: it appears that hardware caching is not a significant performance factor in my tests (though I could be doing something wrong).
 
-With "dynamic", the whole body is crammed into one string in `writev`:
-
-
-      0    393                    writev:return Writev data 9/10: (416 bytes): 0x0000000017601507 \r\nx-frame-options: SAMEORIGIN\r\nx-xss-protection: 1; mode=block\r\nx-content-type-options: nosniff\r\n\r\nXGGICSJAJJMXQKQXGBFBUUKWDQPCDAUANCHXRJHLZTYNGIZYZAJVHHSNHQXSR\nOFLNFDPQWKPTORVBPFZCKDNLDEWAAKAFKAZOPHIMIQNYADAQQJYRVEKPNTZJCPQ\nQHAROKYUMMRULWJAXTFCSLCOHULOSWD
-
-But with "static", most of the strings (though not all, curiously) are sent individually:
-
-      0    393                    writev:return Writev data 9/16: (99 bytes): 0x000000001a606477 \r\nx-frame-options: SAMEORIGIN\r\nx-xss-protection: 1; mode=block\r\nx-content-type-options: nosni
-      0    393                    writev:return Writev data 10/16: (65 bytes): 0x000000001a6025d8 KEFIOIFWOVBCBMFDFOFDTGUDMVDGTHCHLXZNZRWBFKIQTYNPDZNAXPMWFZCTITNKS
-      0    393                    writev:return Writev data 11/16: (1 bytes): 0x000000001a6064da \
-      0    393                    writev:return Writev data 12/16: (65 bytes): 0x000000001a602640 AQDEAMGTAIUEFOXVESOUSHNDJXTWLMWOPCCOLOZTIZHAOPXTTKQCHZLFJEIBBMTQG
-      0    393                    writev:return Writev data 13/16: (128 bytes): 0x000000001a6064db \nAZKBCEXEWTOOYLJIKNUFSIVONYPYCCBAOTEVDOEUSXEGRZCCPHZVVBONYIFSMSA\nMMJWTAPGAJQRSNPFSJGDOLYDZORJJCFJTDOVUTEBKXQGPRXCFPJPLZSBQNQZN
-      0    393                    writev:return Writev data 14/16: (65 bytes): 0x000000001a6026a8 OMPHAWNIYXIWOEHTVRPLDCWL
+Maybe there's some other place I'm not thinking of where hardware caching comes into play?
