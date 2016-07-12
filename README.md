@@ -6,6 +6,8 @@ This repo is an attempt to understand the following statement from "Programming 
 
 I wanted to know: where, exactly, does hardware caching come into play, and how does it help performance?
 
+After reading [Elixir RAM and the Template of Doom](http://www.evanmiller.org/elixir-ram-and-the-template-of-doom.html) and looking at the Phoenix source, I had some ideas.
+
 Here's my understanding so far: [Phoenix renders templates as iodata](https://github.com/phoenixframework/phoenix/blob/b7660e596efe6cd7ac711ef20172dc889f436ac2/lib/phoenix/view.ex#L334-L336), and this means it never has to concatenate the parts of a page into a single response string. Instead, the Erlang VM can call `writev` with the flattened iolist and let the operating system concatenate the response to be sent over TCP.
 
 This means the BEAM doesn't need to allocate a 200MB string in order for Phoenix to send a 200MB HTML response. That's good. But that doesn't explain the "hardware caching" part.
