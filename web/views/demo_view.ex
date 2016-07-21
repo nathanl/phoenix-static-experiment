@@ -10,11 +10,16 @@ defmodule Templater.DemoView do
   # GOAL: to have static & dynamic not differ in the amount of work
   # they perform at runtime, but only in the fact that one of them returns an
   # iolist with mostly-unchanging contents, and the other returns an iolist
-  # with contents that generally do change on each request. (These are sampled
-  # from a pre-generated list of possible responses because otherwise we have
-  # to generate random stuff at runtime, and generating this much random stuff
-  # means there's a bottleneck at the step where we ask crypto for some random
-  # bytes. This may not be a problem with the current implementation.)
+  # with contents that generally do change on each request.
+  #
+  # The theory is that if "same strings to writev on each request" allows CPU
+  # caching, we'll see better throughput on the static endpoint.
+  #
+  # (These are sampled from a pre-generated list of possible responses because
+  # otherwise we have to generate random stuff at runtime, and generating this
+  # much random stuff means there's a bottleneck at the step where we ask
+  # crypto for some random bytes. This may not be a problem with the current
+  # implementation.)
 
   def render("static.html", _) do
     _random_page = @generated_pages |> Enum.random
